@@ -15,3 +15,8 @@ Problem (train_bpe_tinystories):
 1. It uses 43GB memories and takes 50 mins to finish. The longest token is the word "accomplishment", which makes perfect sense.
 2. The acquire method for thread.lock takes most of the running time. This is because the implementation is serial.
 
+Problem (train_bpe_expts_owt):
+
+1. It uses 231GB memories and takes -- mins to finish. The longest token is the word "---", which makes perfect sense.
+
+
