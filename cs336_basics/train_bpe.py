@@ -3,57 +3,8 @@ from typing import BinaryIO
 import multiprocessing as mp
 from collections import defaultdict, Counter
 import regex as re
-from tqdm import tqdm
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
-
-def find_chunk_boundaries(
-    file: BinaryIO, 
-    desired_num_chunks: int, 
-    split_special_token: bytes
-) -> list[int]:
-    """
-    Chunk the file into parts that can be counted independently.
-    May return fewer chunks if the boundaries end up overlapping.
-    """
-    assert isinstance(split_special_token, bytes), (
-        "Must represent special token as a bytestring"
-    )
-
-    # Get total file size in bytes
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell()
-    file.seek(0)
-
-    chunk_size = file_size // desired_num_chunks
-
-    # Initial guesses for chunk boundary locations, uniformly spaced
-    # Chunks start on previous index, don't include last index
-    chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
-    chunk_boundaries[-1] = file_size
-
-    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
-
-    for bi in range(1, len(chunk_boundaries) - 1):
-        initial_position = chunk_boundaries[bi]
-        file.seek(initial_position)  # Start at boundary guess
-        while True:
-            mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
-
-            # If EOF, this boundary should be at the end of the file
-            if mini_chunk == b"":
-                chunk_boundaries[bi] = file_size
-                break
-
-            # Find the special token in the mini chunk
-            found_at = mini_chunk.find(split_special_token)
-            if found_at != -1:
-                chunk_boundaries[bi] = initial_position + found_at
-                break
-            initial_position += mini_chunk_size
-
-    # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
-    return sorted(set(chunk_boundaries))
 
 
 def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_processes: int = 8) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
@@ -96,6 +47,8 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_p
         if token_bytes not in vocab.values():
             vocab[next_id] = token_bytes
             next_id += 1
+    
+    revvocab = {v: k for k, v in vocab.items()}
 
     # Step 2: Pre-tokenization
     pre_tokens_cnt = defaultdict(int)
@@ -104,48 +57,50 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_p
         l = list(tuple(word.encode("utf-8")))
         l = [bytes([x]) for x in l]
         return tuple(l)
+    
+    def bytes_tuple_to_ints_tuple(bytes_tuple: tuple[bytes]) -> tuple[int]:
+        l = [revvocab[b] for b in bytes_tuple]
+        return tuple(l)
 
     with open(input_path, "r", encoding="utf-8") as f:
         text = f.read()
     
     chunks = re.split("|".join(map(re.escape, special_tokens)), text)
     
-    for chunk in tqdm(chunks):
+    for chunk in chunks:
         for m in re.finditer(PAT, chunk):
             word = m.group(0)
-            pre_tokens_cnt[to_bytes_tuple(word)] += 1   # key of pre_tokens_cnt e.g. (b'H', b'e', b'l', b'l', b'o')
+            pre_tokens_cnt[bytes_tuple_to_ints_tuple(to_bytes_tuple(word))] += 1   # key of pre_tokens_cnt is a tuple of ints
 
     # Step 3: Compute BPE Merges
     merges = []
+    pair_counts = defaultdict(int)
 
-    for i in tqdm(range(vocab_size- len(vocab))):
-    # while len(vocab) < vocab_size:
-        pair_counts = defaultdict(int)
+    # Count all adjacent byte pairs
+    for token, cnt in pre_tokens_cnt.items():
+        for i in range(len(token) - 1):
+            pair = (token[i], token[i + 1]) # pair of ints
+            pair_counts[pair] += cnt
 
-        # Count all adjacent byte pairs
-        for token, cnt in pre_tokens_cnt.items():
-            for i in range(len(token) - 1):
-                pair = (token[i], token[i + 1])
-                pair_counts[pair] += cnt
-
+    while len(vocab) < vocab_size:
         if not pair_counts:
             break  # No more pairs to merge
 
         # Find the most frequent pair(s)
         max_count = max(pair_counts.values())
-        candidates = [k for k, v in pair_counts.items() if v == max_count]
+        candidates = [(vocab[k[0]], vocab[k[1]]) for k, v in pair_counts.items() if v == max_count]
         best_pair = max(candidates)
-
+        best_pair = (revvocab[best_pair[0]], revvocab[best_pair[1]])  # Convert back to ints
         a, b = best_pair
 
         # Create new token
-        new_token = a + b
-        vocab[next_id] = new_token
+        new_token = next_id
+        vocab[new_token] = vocab[a] + vocab[b]
+        revvocab[vocab[new_token]] = new_token
         next_id += 1
-
+        change = []
         # Apply the merge to all pre-tokenized sequences
         # 收集变更
-        changes = []
         for token, cnt in pre_tokens_cnt.items():
             # Find all occurrences of the `best_pair` in `token`
             indices = [i for i in range(len(token) - 1) if token[i:i + 2] == best_pair]
@@ -155,20 +110,34 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_p
                 i = 0
                 while i < len(token):
                     if i in indices:
+                        pair_counts[best_pair] -= cnt
+                        if pair_counts[best_pair] <= 0:
+                            del pair_counts[best_pair]
+                        if i > 0:
+                            pair_counts[(token[i - 1], token[i])] -= cnt
+                            if pair_counts[(token[i - 1], token[i])] <= 0:
+                                del pair_counts[(token[i - 1], token[i])]
+                            pair_counts[(token[i - 1], new_token)] = pair_counts.get((token[i - 1], new_token), 0) + cnt
+                        if i + 2 < len(token):
+                            pair_counts[(token[i + 1], token[i + 2])] -= cnt
+                            if pair_counts[(token[i + 1], token[i + 2])] <= 0:
+                                del pair_counts[(token[i + 1], token[i + 2])]
+                            pair_counts[(new_token, token[i + 2])] = pair_counts.get((new_token, token[i + 2]), 0) + cnt
                         new_pre_token.append(new_token)
                         i += 2
                     else:
                         new_pre_token.append(token[i])
                         i += 1
                 new_pre_token = tuple(new_pre_token)
-                changes.append((token, new_pre_token, cnt))
+                change.append((token, new_pre_token, cnt))
 
-        # 应用变更
-        for old_token, new_pre_token, cnt in changes:
-            pre_tokens_cnt[new_pre_token] = pre_tokens_cnt.get(new_pre_token, 0) + cnt
+        for old_token, new_pre_token, cnt in change:
             del pre_tokens_cnt[old_token]
+            pre_tokens_cnt[new_pre_token] = pre_tokens_cnt.get(new_pre_token, 0) + cnt
+
+        # 应用变       
 
         # Record the merge
-        merges.append((a, b))
+        merges.append((vocab[a], vocab[b]))
 
     return vocab, merges
