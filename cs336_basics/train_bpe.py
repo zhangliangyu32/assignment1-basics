@@ -3,6 +3,7 @@ from typing import BinaryIO
 import multiprocessing as mp
 from collections import defaultdict, Counter
 import regex as re
+from tqdm import tqdm
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 
@@ -109,7 +110,7 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_p
     
     chunks = re.split("|".join(map(re.escape, special_tokens)), text)
     
-    for chunk in chunks:
+    for chunk in tqdm(chunks):
         for m in re.finditer(PAT, chunk):
             word = m.group(0)
             pre_tokens_cnt[to_bytes_tuple(word)] += 1   # key of pre_tokens_cnt e.g. (b'H', b'e', b'l', b'l', b'o')
@@ -117,7 +118,8 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_p
     # Step 3: Compute BPE Merges
     merges = []
 
-    while len(vocab) < vocab_size:
+    for i in tqdm(range(vocab_size- len(vocab))):
+    # while len(vocab) < vocab_size:
         pair_counts = defaultdict(int)
 
         # Count all adjacent byte pairs
