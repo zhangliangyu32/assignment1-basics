@@ -17,6 +17,18 @@ Problem (train_bpe_tinystories):
 
 Problem (train_bpe_expts_owt):
 
-1. It uses 231GB memories and takes -- mins to finish. The longest token is the word "---", which makes perfect sense.
+1. It uses 231GB memories and takes about 50 hours to finish. The longest token is the word "---", which makes perfect sense.
+
+2.
+
+Problem (tokenizer_experiments):
+
+1. The compression ratios of the tiny stories tokenizer and the owt tokenizer are 4.094558901215002 and --- , respectively.
+
+2. 
+
+3. The throughput of the two tokenizers are 8206.930357155328 and ----. It will take 114095 and ---- seconds if we use the two tokenizers to tokenize the Pile dataset, respectively.
+
+4. .
 
 

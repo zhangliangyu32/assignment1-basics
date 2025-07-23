@@ -14,7 +14,7 @@ def main():
                        help="Output path for vocabulary file (default: ./vocabulary.pkl)")
     parser.add_argument("--merges-output", type=str, default="./merges.pkl",
                        help="Output path for merges file (default: ./merges.pkl)")
-    parser.add_argument("--profile", action="store_true", default=True, 
+    parser.add_argument("--profile", action="store_true", default=False, 
                        help="Run with cProfile for performance profiling")
     
     args = parser.parse_args()

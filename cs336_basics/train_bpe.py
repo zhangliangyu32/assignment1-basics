@@ -3,6 +3,7 @@ from typing import BinaryIO
 import multiprocessing as mp
 from collections import defaultdict, Counter
 import regex as re
+from tqdm import tqdm
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 
@@ -67,7 +68,7 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_p
     
     chunks = re.split("|".join(map(re.escape, special_tokens)), text)
     
-    for chunk in chunks:
+    for chunk in tqdm(chunks, desc="Pre-tokenizing", unit="chunk"):
         for m in re.finditer(PAT, chunk):
             word = m.group(0)
             pre_tokens_cnt[bytes_tuple_to_ints_tuple(to_bytes_tuple(word))] += 1   # key of pre_tokens_cnt is a tuple of ints
@@ -82,7 +83,9 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str], num_p
             pair = (token[i], token[i + 1]) # pair of ints
             pair_counts[pair] += cnt
 
-    while len(vocab) < vocab_size:
+    i = 0  # Start from the next available ID
+    for i in tqdm(range(vocab_size - len(vocab))):
+        i += 1
         if not pair_counts:
             break  # No more pairs to merge
 
