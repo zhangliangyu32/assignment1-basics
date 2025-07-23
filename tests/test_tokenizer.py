@@ -422,7 +422,9 @@ def test_encode_iterable_memory_usage():
         vocab_path=VOCAB_PATH,
         merges_path=MERGES_PATH,
     )
-    with open(FIXTURES_PATH / "tinystories_sample_5M.txt") as f:
+    # with open(FIXTURES_PATH / "tinystories_sample_5M.txt") as f:
+    # the original test is too
+    with open(FIXTURES_PATH / "tinystories_sample.txt") as f:
         ids = []
         for _id in _encode_iterable(tokenizer, f):
             ids.append(_id)
