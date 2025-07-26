@@ -13,6 +13,8 @@ from einops import rearrange, einsum
 from cs336_basics.train_bpe import train_bpe
 from cs336_basics.Tokenizer import Tokenizer
 import cs336_basics.Modules as Modules
+import cs336_basics.utils as utils
+import cs336_basics.Optimizer as Optimizer
 def run_linear(
     d_in: int,
     d_out: int,
@@ -502,7 +504,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    return Modules.softmax(in_features, dim)
+    return utils.softmax(in_features, dim)
 
 
 def run_cross_entropy(inputs: Float[Tensor, " batch_size vocab_size"], targets: Int[Tensor, " batch_size"]) -> Float[Tensor, ""]:
@@ -518,7 +520,7 @@ def run_cross_entropy(inputs: Float[Tensor, " batch_size vocab_size"], targets: 
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return utils.cross_entropy_loss(inputs, targets)
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
@@ -537,7 +539,7 @@ def get_adamw_cls() -> type[torch.optim.Optimizer]:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return Optimizer.AdamW
 
 
 def run_get_lr_cosine_schedule(
