@@ -2,22 +2,22 @@ Problem (unicode1):
 
 1. '\x00'
 2. It is the invisible null character when printed.
-3. It reads '\x00' when appears as in a string and is invisible when printed.
+3. It reads '\x00' when appearing as in a string and is invisible when printed.
 
 Problem (unicode2):
 
-1. The vocabulary is smaller. And thus aviod the sparsity issue and achieve better space efficiency for common text.
+1. The vocabulary is smaller. And thus avoid the sparsity issue and achieve better space efficiency for common text.
 2. The UTF-8 encoding may use multiple bytes to represent a character. A failure case can be "你好吗？".
 3. "\xe4\xbd". "\xe4" signals the beginning of a 3-byte character.
 
 Problem (train_bpe_tinystories):
 
-1. It uses 43GB memories and takes 50 mins to finish. The longest token is the word "accomplishment", which makes perfect sense.
+1. It uses 43GB memory and takes 50 mins to finish. The longest token is the word "accomplishment", which makes perfect sense.
 2. The acquire method for thread.lock takes most of the running time. This is because the implementation is serial.
 
 Problem (train_bpe_expts_owt):
 
-1. It uses 231GB memories and takes about 50 hours to finish. The longest token is the word "---", which makes perfect sense.
+1. It uses 231GB memory and takes about 50 hours to finish. The longest token is the word "---", which makes perfect sense.
 
 2.
 
@@ -41,9 +41,9 @@ Problem (transformer_accounting):
     - one FFN layer with 3 * d_model * d_ff learnable parameters
     - one MultiHeadSelfAttention layer with d_model * d_k * num_heads + d_model * d_k * num_heads + d_model * d_v * num_heads + d_model * d_v * num_heads learnable parameters. Note that d_v * num_heads = d_k * num_heads = d_model.
     
-    The final output layer with d_model * vocab_size learnable parameters.
+    The final output layer has d_model * vocab_size learnable parameters.
 
-    In total, there are vocab_size * d_model + num_layers * (2 * d_model + 3 * d_model * d_ff + 4 * d_model^2) + d_model * vocab_size = 2127056000=2.1B parameters.
+    In total, there are vocab_size * d_model + num_layers * (2 * d_model + 3 * d_model * d_ff + 4 * d_model^2) + d_model * vocab_size + d = 2127057600=2.1B parameters.
     It takes about 8.5GB memory to load this model.
 
 2. For each transformer block, the FF layer need to perform 3 matmuls with 4 * context_len  * d_model * d_ff + 2 * context_len * d_model * d_ff FLOPs. (6 ldf)
@@ -71,6 +71,35 @@ Problem (learning_rate_tuning):
 * lr=10, slow decay;
 * lr=100, fast decay;
 * lr=1000, diverges.
+
+Problem (adamwAccounting):
+
+1. We first define some notations: $d=$d_model, $h=$num_heads, $v=$vocab_size, $l=$context_len, $n=$num_layers, $B=$batch_size.
+   For the parameters,
+   * The token embedding layer has $dv$ parameters.
+   * The final Norm layer and output embeddings layer have $d$ and $dv$ parameters, respectively.
+   * In the transformer block, each of the two Norm layers has $d$ parameters, the MHA layer has $4d^2$ parameters, and the FFN has $12 d^2$ parameters.
+   
+   In total, there are $2dv+d+n(16d^2+2d)$ parameters.
+   
+   The memory consumption of saving the gradients is equal to that of saving the parameters.
+
+   For the optimizer's state, we need to save two moving averages, which costs twice the memory cost of saving the parameters.
+
+   For the activations,
+   * The final Norm layer yields $BLd$ activations, and the output embedding layer yields $BLv$ activations.
+   * In the transformer block, each of the two Norm layers has $Bld$ activations. For MHA, the Q, K, V projections yields $3Bld$ activations. $Q^\top K$ matrix multiply yields $Bhl^2$ activations, softmax yields $Bld$ activations, weighted sum of values yields $Bld$ activations, and the final output yields $Bld$ activations. For FFN, each of silu, $W_1$ matrix multiply and $W_2$ matrix multiply yields $4Bld$ activations.
+   * To compute cross-entropy on logits we need to compute $Bl$ activations.
+  
+   In total, there are $BLd+Blv+Bl+n(20Bld+bl^2)$ activations.
+
+   So the final memory use is $8dv+4d+4n(16d^2+2d)+BLd+Blv+Bl+n(20Bld+BHl^2)$ float 32 parameters.
+
+2. The expression is $8.51\times 10^9+2.88\times 10^9 B$, or $31.7$GB+$10.7B$GB. The maximal batch_size is approximately 4.
+
+3. Each forward step takes about $4.51\times 10^{12}$ FLOPs. So each adamW step takes about $13.5\times 10^{12}$ FLOPs (ignoring some minor operations.)
+
+4. It will take approximately 7 years to finish the training.
 
 
 
