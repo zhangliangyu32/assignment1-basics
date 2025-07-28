@@ -12,24 +12,24 @@ Problem (unicode2):
 
 Problem (train_bpe_tinystories):
 
-1. It uses 43GB memory and takes 50 mins to finish. The longest token is the word "accomplishment", which makes perfect sense.
-2. The acquire method for thread.lock takes most of the running time. This is because the implementation is serial.
+1. It uses 6GB memory and takes only 28 seconds to finish training (damek's implementations is so fast!!!). The longest token is the word "accomplishment", which makes perfect sense.
+2. The functions for reading files takes most of the running time. This is because the main performance bottleneck is to load the dataset.
 
 Problem (train_bpe_expts_owt):
 
-1. It uses 231GB memory and takes about 50 hours to finish. The longest token is the word "---", which makes perfect sense.
+1. It uses 55GB memory and takes about 1.5 hours to finish. The longest token is a string consisting of repeading number patterns, which is a little bit confusing.
 
-2.
+2. The owt tokenizer has a richer vocabulary. 
 
 Problem (tokenizer_experiments):
 
-1. The compression ratios of the tiny stories tokenizer and the owt tokenizer are 4.094558901215002 and --- , respectively.
+1. The compression ratios of the tiny stories tokenizer and the owt tokenizer are 4.094558901215002 and 4.368112784973083 , respectively.
 
-2. 
+2. The compression ratio is lower (3.1813436083310203).
 
-3. The throughput of the two tokenizers are 8206.930357155328 and ----. It will take 114095 and ---- seconds if we use the two tokenizers to tokenize the Pile dataset, respectively.
+3. The throughput of the two tokenizers are 2858193.9135480467 and 1965804.69142808. It will take 310150 and 450819 seconds if we use the two tokenizers to tokenize the Pile dataset, respectively.
 
-4. .
+4. uint16 achieve optimal space complexity while 2^16=65536>32000.
 
 Problem (transformer_accounting): 
 

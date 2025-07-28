@@ -10,7 +10,7 @@ import torch
 from torch import Tensor
 from einops import rearrange, einsum
 
-from cs336_basics.train_bpe import train_bpe
+from cs336_basics.naive_train_bpe import train_bpe
 from cs336_basics.Tokenizer import Tokenizer
 import cs336_basics.Modules as Modules
 import cs336_basics.utils as utils
@@ -532,7 +532,9 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    return Optimizer.gradient_clipping(
+        parameters=parameters,
+        max_norm=max_l2_norm)
 
 
 def get_adamw_cls() -> type[torch.optim.Optimizer]:
@@ -567,7 +569,8 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return Optimizer.cos_lr_scheduler(t=it, alpha_max=max_learning_rate, alpha_min=min_learning_rate,
+                                      warmup_steps=warmup_iters, total_steps=cosine_cycle_iters)
 
 
 def run_save_checkpoint(
