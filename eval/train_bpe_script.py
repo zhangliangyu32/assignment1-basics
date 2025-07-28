@@ -1,9 +1,8 @@
 import argparse
 import cProfile
 import pickle
-from cs336_basics.train_bpe import train_bpe
-
-
+from cs336_basics.Tokenizer import BPETrainer
+import time
 def main():
     parser = argparse.ArgumentParser(description="Train BPE tokenizer on a dataset")
     parser.add_argument("input_path", type=str, help="Path to the input text file")
@@ -18,26 +17,32 @@ def main():
                        help="Run with cProfile for performance profiling")
     
     args = parser.parse_args()
-    
+    trainer = BPETrainer()
+    def run_training():
+            return trainer.train(args.input_path, args.vocab_size, args.special_tokens)
     if args.profile:
         # Use cProfile to profile the training
-        def run_training():
-            return train_bpe(args.input_path, args.vocab_size, args.special_tokens)
         
         print("Starting profiled training...")
         profiler = cProfile.Profile()
         profiler.enable()
+        time_start = time.time()
         vocabulary, merges = run_training()
+        time_ed = time.time()
+        print("time taken to train the tokenizer", time_ed - time_start)
         profiler.disable()
         
         # Print the profile stats
         print("\n=== PROFILING RESULTS (TOP 10 BY TOTAL TIME) ===")
-        profiler.print_stats(sort='tottime', limit=10)
+        profiler.print_stats(sort='tottime')
         print("\n=== PROFILING RESULTS (TOP 10 BY CUMULATIVE TIME) ===")
-        profiler.print_stats(sort='cumulative', limit=10)
+        profiler.print_stats(sort='cumulative')
     else:
         # Run normally without profiling
-        vocabulary, merges = train_bpe(args.input_path, args.vocab_size, args.special_tokens)
+        time_start = time.time()
+        vocabulary, merges = run_training()
+        time_ed = time.time()
+        print("time taken to train the tokenizer", time_ed - time_start)
     # Save the results
     pickle.dump(vocabulary, open(args.vocab_output, "wb"))
     pickle.dump(merges, open(args.merges_output, "wb"))

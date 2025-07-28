@@ -2,7 +2,7 @@ from collections.abc import Iterable, Callable
 from typing import Iterator, Optional
 import torch
 import math
-
+import pickle
 class SGD(torch.optim.Optimizer):
     def __init__(self, params, lr=1e-3):
         if lr < 0:
@@ -73,3 +73,49 @@ if __name__ == "__main__":
         print(loss.cpu().item())
         loss.backward()
         opt.step()
+
+def cos_lr_scheduler(t: int, alpha_max: float, alpha_min: float, warmup_steps: int, total_steps: int) -> float:
+    """
+    A cosine learning rate scheduler with warmup.
+    
+    Args:
+        t (int): The current training step.
+        alpha_max (float): The maximum learning rate.
+        alpha_min (float): The minimum learning rate.
+        warmup_steps (int): The number of warmup steps.
+        total_steps (int): The total number of training steps.
+
+    Returns:
+        float: The learning rate for the current step.
+    """
+    if t < warmup_steps:
+        return alpha_max * (t / warmup_steps)
+    elif t <= total_steps:
+        return alpha_min + 0.5 * (alpha_max - alpha_min) * (1 + math.cos(math.pi * (t - warmup_steps) / (total_steps - warmup_steps)))
+    else:
+        return alpha_min
+    
+def gradient_clipping(
+    parameters: Iterable[torch.nn.Parameter],
+    max_norm: float,
+    eps: float = 1e-6,
+) -> None:
+    """
+    Clips gradients of an iterable of parameters.
+
+    Args:
+        parameters (Iterable[torch.nn.Parameter]): Iterable of parameters to clip gradients for.
+        max_norm (float): Maximum norm of the gradients.
+        norm_type (float): Type of the norm to use for clipping.
+    """
+    print(max_norm)
+    grad_norm = 0.0
+    for param in parameters:
+        if param.grad is not None:
+            grad_norm  += param.grad.data.norm("fro") ** 2
+    grad_norm = grad_norm ** 0.5
+    if grad_norm > max_norm:
+        for param in parameters:
+            if param.grad is not None:
+                param.grad.data.mul_(max_norm / (grad_norm + eps))
+    return
