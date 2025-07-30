@@ -139,4 +139,32 @@ class TransformerLM(nn.Module):
             x = layer(x)
         x = self.norm(x)
         return self.output(x)
+    
+    def decode(self, prefix: torch.Tensor, max_length: int, eof_id: int, temperature: float = 1.0, top_p: float = 0.9) -> torch.Tensor:
+        # Initialize output with the prefix
+        # shape: (1, seq_len)
+        output = rearrange(prefix, 'seq_len -> 1 seq_len')
+        while output.shape[1] < max_length:
+            # shape: (1, seq_len, vocab_size)
+            logits = self.forward(output)
+            # logits of the next token prediction
+            logits = logits[:, -1, :] / temperature
+            logits = rearrange(logits, '1 1 vocab_size -> vocab_size')
+            if top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                sorted_indices_to_remove = cumulative_probs > top_p
+                # in case the first token is above the threshold, we remove it
+                sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                sorted_indices_to_remove[0] = 0
+                indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                logits[indices_to_remove] =torch.float('-inf')
+            probs = softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+            if next_token.item() == eof_id:
+                break
+            next_token = rearrange(next_token, '1 -> 1 1')
+            output = torch.cat((output, next_token), dim=1)
+        return output
+        
 
