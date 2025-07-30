@@ -25,4 +25,3 @@ def cross_entropy_loss(logits: torch.Tensor, targets: torch.Tensor) -> torch.Ten
     vector_loss = torch.gather(vector_loss, dim=-1, index=targets.unsqueeze(-1))
     average_loss = torch.mean(vector_loss)
     return average_loss.squeeze()
-
