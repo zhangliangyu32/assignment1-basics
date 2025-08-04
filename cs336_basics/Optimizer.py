@@ -74,26 +74,67 @@ if __name__ == "__main__":
         loss.backward()
         opt.step()
 
-def cos_lr_scheduler(t: int, alpha_max: float, alpha_min: float, warmup_steps: int, total_steps: int) -> float:
-    """
-    A cosine learning rate scheduler with warmup.
-    
-    Args:
-        t (int): The current training step.
-        alpha_max (float): The maximum learning rate.
-        alpha_min (float): The minimum learning rate.
-        warmup_steps (int): The number of warmup steps.
-        total_steps (int): The total number of training steps.
+class LRScheduler():
+    def __init__(self, optimizer, iter = 0):
+        self.optimizer = optimizer
+        self.iter = iter
 
-    Returns:
-        float: The learning rate for the current step.
-    """
-    if t < warmup_steps:
-        return alpha_max * (t / warmup_steps)
-    elif t <= total_steps:
-        return alpha_min + 0.5 * (alpha_max - alpha_min) * (1 + math.cos(math.pi * (t - warmup_steps) / (total_steps - warmup_steps)))
-    else:
-        return alpha_min
+    def get_lr(self):
+        raise NotImplementedError
+    
+    def step(self):
+        lr = self.get_lr()
+        self.iter += 1
+        for group in self.optimizer.param_groups:
+            group['lr'] = lr
+
+class CosineLRScheduler(LRScheduler):
+
+    def __init__(self, optimizer, iter, max_lr, min_lr, warmup_end, cosine_end):
+        super().__init__(optimizer, iter)
+        self.max_lr = max_lr 
+        self.min_lr = min_lr
+        self.warmup_end = warmup_end
+        self.cosine_end = cosine_end
+
+    def get_lr(self): 
+        it = self.iter
+        if it < self.warmup_end: 
+            return (it/max(float(self.warmup_end), 1))*self.max_lr
+        elif self.warmup_end <= it <= self.cosine_end:
+            return self.min_lr + .5*(1 + math.cos((it - self.warmup_end)*math.pi/(self.cosine_end - self.warmup_end)))*(self.max_lr-self.min_lr)
+        else:
+            return self.min_lr
+
+class ConstantLRScheduler(LRScheduler):
+
+    def __init__(self, optimizer, iter, lr):
+        super().__init__(optimizer, iter)
+        self.lr = lr
+
+    def get_lr(self):
+        return self.lr
+
+# def cos_lr_scheduler(t: int, alpha_max: float, alpha_min: float, warmup_steps: int, total_steps: int) -> float:
+#     """
+#     A cosine learning rate scheduler with warmup.
+    
+#     Args:
+#         t (int): The current training step.
+#         alpha_max (float): The maximum learning rate.
+#         alpha_min (float): The minimum learning rate.
+#         warmup_steps (int): The number of warmup steps.
+#         total_steps (int): The total number of training steps.
+
+#     Returns:
+#         float: The learning rate for the current step.
+#     """
+#     if t < warmup_steps:
+#         return alpha_max * (t / warmup_steps)
+#     elif t <= total_steps:
+#         return alpha_min + 0.5 * (alpha_max - alpha_min) * (1 + math.cos(math.pi * (t - warmup_steps) / (total_steps - warmup_steps)))
+#     else:
+#         return alpha_min
     
 def gradient_clipping(
     parameters: Iterable[torch.nn.Parameter],
