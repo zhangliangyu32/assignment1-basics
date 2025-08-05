@@ -24,6 +24,31 @@ def data_loader(x: np.ndarray, batch_size: int = 16, context_len: int = 10, devi
     target_batch = torch.tensor(target_batch, device=device)
     return x_batch, target_batch
 
+def compute_validation_loss(model: torch.nn.Module, x_val: np.ndarray, context_len: int = 256, device: str = "cpu"):
+    """
+    Compute the validation loss for the model.
+    
+    Args:
+        model (torch.nn.Module): The model to evaluate.
+        x_val (np.ndarray): Validation data, 1 dimensional numpy arrays consisting of token ids.
+        context_len (int): Length of the context window.
+        device (str): Device to load the tensors onto.
+    
+    Returns:
+        float: The average validation loss.
+    """
+    model.eval()
+    device = torch.device(device)
+    total_loss = 0.0
+    n_batches = len(x_val) // context_len
+    with torch.no_grad():
+        for i in tqdm.tqdm(range(n_batches)):
+            x_batch, target_batch = data_loader(x_val[i * context_len:(i + 1) * context_len], batch_size=1, context_len=context_len, device=device)
+            logits = model(x_batch)
+            loss = utils.cross_entropy_loss(logits, target_batch)
+            total_loss += loss.item()
+    return total_loss / n_batches
+
 def save_checkpoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, iteration: int, out: str):
     """
     Save the model and optimizer state dicts to disk.
