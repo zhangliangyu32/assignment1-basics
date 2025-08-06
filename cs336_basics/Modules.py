@@ -122,6 +122,39 @@ class TransformerBlock(nn.Module):
         ff_output = self.ff(self.norm2(x))
         return x + ff_output
 
+class TransformerBlockwithAblation(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, rope: nn.Module = None, ablation_mode: str = "None", device=None, dtype=None):
+        super(TransformerBlockwithAblation, self).__init__()
+        if ablation_mode not in ["None", "post_norm", "no_norm", "no_RoPE", "SiLU"]:
+            raise ValueError("Invalid ablation mode. Choose from 'None', 'post_norm', 'no_norm', 'no_RoPE', or 'SiLU'.")
+        self.ablation_mode = ablation_mode
+        if self.ablation_mode in ["None", "post_norm"]:
+            self.attn = MultiheadSelfAttention(d_model, num_heads, rope, device=device, dtype=dtype)
+            self.norm1 = RMSNorm(d_model, device=device, dtype=dtype)
+            self.ff = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+            self.norm2 = RMSNorm(d_model, device=device, dtype=dtype)
+        elif self.ablation_mode == "no_norm":
+            self.attn = MultiheadSelfAttention(d_model, num_heads, rope, device=device, dtype=dtype)
+            self.ff = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.ablation_mode == "None":
+            attn_output = self.attn(self.norm1(x))
+            x = x + attn_output
+            ff_output = self.ff(self.norm2(x))
+            return x + ff_output
+        elif self.ablation_mode == "no_norm":
+            attn_output = self.attn(x)
+            x = x + attn_output
+            ff_output = self.ff(x)
+            return x + ff_output
+        elif self.ablation_mode == "post_norm":
+            attn_output = self.attn(x)
+            x = self.norm1(x + attn_output)
+            ff_output = self.ff(x)
+            return self.norm2(x + ff_output)
+
 class TransformerLM(nn.Module):
     def __init__(self, vocab_size: int, context_length: int, num_layers: int, d_model: int, num_heads: int, d_ff: int, rope_theta: float, device=None, dtype=None):
         super(TransformerLM, self).__init__()
@@ -166,5 +199,69 @@ class TransformerLM(nn.Module):
             next_token = rearrange(next_token, '1 -> 1 1')
             output = torch.cat((output, next_token), dim=1)
         return output
+    
+
+class TransformerLMwithAblation(nn.Module):
+    def __init__(self, vocab_size: int, context_length: int, num_layers: int, d_model: int, num_heads: int, d_ff: int, rope_theta: float, ablation_mode: str = "None", device=None, dtype=None):
+        super(TransformerLMwithAblation, self).__init__()
+        if ablation_mode not in ["None", "post_norm", "no_norm", "no_RoPE", "SiLU"]:
+            raise ValueError("Invalid ablation mode. Choose from 'None', 'post_norm', 'no_norm', 'no_RoPE', or 'SiLU'.")
+        self.ablation_mode = ablation_mode
+        if self.ablation_mode is None:
+            self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
+            self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
+            self.layers = nn.ModuleList([
+                TransformerBlock(d_model, num_heads, d_ff, self.rope, device=device, dtype=dtype) for _ in range(num_layers)
+            ])
+            self.norm = RMSNorm(d_model, device=device, dtype=dtype)
+            self.output = Linear(d_model, vocab_size, device=device, dtype=dtype)
+        elif self.ablation_mode == "no_norm":
+            self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
+            self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
+            self.layers = nn.ModuleList([
+                TransformerBlockwithAblation(d_model, num_heads, d_ff, self.rope, ablation_mode=self.ablation_mode, device=device, dtype=dtype) for _ in range(num_layers)
+            ])
+            self.output = Linear(d_model, vocab_size, device=device, dtype=dtype)
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.ablation_mode == "None":
+            x = self.embedding(x)
+            for layer in self.layers:
+                x = layer(x)
+            x = self.norm(x)
+            return self.output(x)
+        elif self.ablation_mode == "no_norm":
+            x = self.embedding(x)
+            for layer in self.layers:
+                x = layer(x)
+            return self.output(x)
+    
+    def decode(self, prefix: torch.Tensor, max_length: int, eof_id: int, temperature: float = 1.0, top_p: float = 0.9) -> torch.Tensor:
+        # Initialize output with the prefix
+        # shape: (1, seq_len)
+        output = rearrange(prefix, 'seq_len -> 1 seq_len')
+        while output.shape[1] < max_length:
+            # shape: (1, seq_len, vocab_size)
+            logits = self.forward(output)
+            # logits of the next token prediction
+            logits = logits[:, -1, :] / temperature
+            logits = rearrange(logits, '1 vocab_size -> vocab_size')
+            if top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                sorted_indices_to_remove = cumulative_probs > top_p
+                # in case the first token is above the threshold, we remove it
+                sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                sorted_indices_to_remove[0] = 0
+                indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                logits[indices_to_remove] = float('-inf')
+            probs = softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+            if next_token.item() == eof_id:
+                break
+            next_token = rearrange(next_token, '1 -> 1 1')
+            output = torch.cat((output, next_token), dim=1)
+        return output
+
         
 
