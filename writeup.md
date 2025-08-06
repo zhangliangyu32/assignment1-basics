@@ -101,9 +101,43 @@ Problem (adamwAccounting):
 
 4. It will take approximately 7 years to finish the training
 
-Proble (generate): 
+Problem (learning_rate):
 
-Here is a sample from the LM trained on TinyStories. We use top_p=0.8 and temprerature=0.8.
+![learning curves of different lr choices (train loss)](./figures/lr_experiment_train.png "learning curves of different lr choices (train loss)")
+
+![learning curves of different lr choices (validation loss)](./figures/lr_experiment_val.png "learning curves of different lr choices (validation loss)")
+
+We can see from the figure that the best-performing lr choice is 1e-3.
+If we use larger lrs like 3e-3 or 1e-2 the training diverges, and if we use smaller lr like 1e-4 the convergence is a little slower.
+
+We also compare cosine lr scheduler versus constant lr:
+
+![learning curves of cos lr scheduler and constant lr (1e-3) (train loss)](./figures/cos_con_experiment_train.png "learning curves of cos lr scheduler and constant lr (1e-3) (train loss)")
+
+![learning curves of cos lr scheduler and constant lr (1e-3) (validation loss)](./figures/cos_con_experiment_val.png "learning curves of cos lr scheduler and constant lr (1e-3) (validation loss)")
+
+We can see that the model trained with cosine lr scheduler significantly outperforms that trained with constant lr.
+
+We also explore the effect of weight decay.
+We find that setting weight_decay parameter to be 0.01 does not incur any difference to the model performance.
+We conjecture this is because the model is small, and we only train for 40k steps (batch_size=32).
+Thus there is no significant overfitting.
+
+Problem (batch_size experiment)
+
+![learning curves of different batch_size choices (train loss)](./figures/batch_size_experiment_train.png "learning curves of different lr choices (train loss)")
+
+![learning curves of different batch_size choices (validation loss)](./figures/batch_size_experiment_val.png "learning curves of different lr choices (train loss)")
+
+We adopt a heuristic rule to set the lr: letting the lr grow proportionally w.r.t. the batch_size.
+We find that with the fixed training budget, the model trained with batch_size=16 has similar performance to that trained with batch_size=32. 
+However, the running time of the latter is significantly shorter.
+For the case of batch_size=64, the model perform poorly.
+Maybe we should try smaller lrs.
+
+Problem (generate): 
+
+Here is a sample from the LM trained on TinyStories with constant lr=1e-3 and no weight decay. The final validation loss is 1.35. We use top_p=0.8 and temprerature=0.8.
 
 Once upon a time, there was a little boy named Tim. Tim was a very good boy, but he was very spoiled. He always wanted more and more. One day, Tim's mom took him to the store. She wanted to buy a toy for him. Tim was very happy.
 At the store, Tim saw many toys. He saw a big doll, a soft bear, and a funny car. But he did not have enough money. Tim felt sad and his mom said, "Don't be sad, Tim. You can buy the car." Tim's mom bought the car for him.

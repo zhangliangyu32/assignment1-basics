@@ -29,7 +29,6 @@ def data_loader(x: np.ndarray, batch_size: int = 16, context_len: int = 10, devi
     target_batch = torch.tensor(target_batch, device=device)
     return x_batch, target_batch
 
-<<<<<<< HEAD
 # def compute_validation_loss(model: torch.nn.Module, x_val: np.ndarray, context_len: int = 256, device: str = "cpu"):
 #     """
 #     Compute the validation loss for the model.
@@ -55,10 +54,7 @@ def data_loader(x: np.ndarray, batch_size: int = 16, context_len: int = 10, devi
 #             total_loss += loss.item()
 #     return total_loss / n_batches
 
-def compute_validation_loss(model: torch.nn.Module, x_val: np.ndarray, context_len: int = 256, n_batches: int = 320, batch_size: int = 32, device: str = "cpu"):
-=======
-def compute_validation_loss(model: torch.nn.Module, x_val: np.ndarray, context_len: int = 256, device: str = "cpu"):
->>>>>>> dd4793f83ff1749e39564be33e21026b918cf627
+def compute_validation_loss(model: torch.nn.Module, x_val: np.ndarray, context_len: int = 256, n_batches: int = 500, batch_size: int = 32, device: str = "cpu"):
     """
     Compute the validation loss for the model.
     
@@ -74,14 +70,9 @@ def compute_validation_loss(model: torch.nn.Module, x_val: np.ndarray, context_l
     model.eval()
     device = torch.device(device)
     total_loss = 0.0
-    n_batches = len(x_val) // context_len
     with torch.no_grad():
         for i in tqdm.tqdm(range(n_batches)):
-<<<<<<< HEAD
             x_batch, target_batch = data_loader(x_val, batch_size=batch_size, context_len=context_len, device=device)
-=======
-            x_batch, target_batch = data_loader(x_val[i * context_len:(i + 1) * context_len], batch_size=1, context_len=context_len, device=device)
->>>>>>> dd4793f83ff1749e39564be33e21026b918cf627
             logits = model(x_batch)
             loss = utils.cross_entropy_loss(logits, target_batch)
             total_loss += loss.item()
