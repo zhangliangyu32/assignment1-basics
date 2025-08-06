@@ -16,8 +16,9 @@ config = {
         "device": "cuda:0",
         "train_data_path": "/root/autodl-tmp/data/tiny_stories_train.npy",
         "val_data_path": "/root/autodl-tmp/data/tiny_stories_valid.npy",
+        "ablation_mode": "no_norm", # None, post_norm, no_RoPE, SiLU
     }
-from cs336_basics.Modules import TransformerLM
+from cs336_basics.Modules import TransformerLM, TransformerLMwithAblation
 import numpy as np
 from cs336_basics.train import train
 x_train = np.memmap(config["train_data_path"], dtype=np. uint16, mode='r').astype(np.int64)
@@ -39,11 +40,24 @@ x_val = np.memmap(config["val_data_path"], dtype=np.uint16, mode='r').astype(np.
 # model = TransformerLM(vocab_size=10000, context_length=config["context_len"], num_layers=4, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, device=config["device"])
 # train(x_train, x_val, model, config)
 
-config["max_iterations"] = 40000
-config["batch_size"] = 32
+
+config["note"] = "no_norm ablation"
+model = TransformerLMwithAblation(vocab_size=10000, context_length=config["context_len"], num_layers=4, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, ablation_mode=config["ablation_mode"], device=config["device"])
+train(x_train, x_val, model, config)
+
+config["learning_rate"] = 1e-4
+model = TransformerLMwithAblation(vocab_size=10000, context_length=config["context_len"], num_layers=4, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, ablation_mode=config["ablation_mode"], device=config["device"])
+train(x_train, x_val, model, config)
+
 config["learning_rate"] = 1e-3
-config["weight_decay"] = 0.01
-config["lr_scheduler_cosine"] = True
-config["note"] = "cosine learning rate scheduler and no weight decay=0.01"
-model = TransformerLM(vocab_size=10000, context_length=config["context_len"], num_layers=4, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, device=config["device"])
+config["ablation_mode"] = "post_norm"
+model = TransformerLMwithAblation(vocab_size=10000, context_length=config["context_len"], num_layers=4, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, ablation_mode=config["ablation_mode"], device=config["device"])
+train(x_train, x_val, model, config)
+
+config["ablation_mode"] = "no_RoPE"
+model = TransformerLMwithAblation(vocab_size=10000, context_length=config["context_len"], num_layers=4, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, ablation_mode=config["ablation_mode"], device=config["device"])
+train(x_train, x_val, model, config)
+
+config["ablation_mode"] = "SiLU"
+model = TransformerLMwithAblation(vocab_size=10000, context_length=config["context_len"], num_layers=4, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, ablation_mode=config["ablation_mode"], device=config["device"])
 train(x_train, x_val, model, config)

@@ -47,6 +47,18 @@ class SwiGLU(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.linear2(self.silu(self.linear1(x)) * self.linear3(x))
 
+class SiLU(nn.Module):
+    def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
+        super(SwiGLU, self).__init__()
+        self.linear1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.linear2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+    
+    def silu(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.sigmoid(x)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear2(self.silu(self.linear1(x)))
+
 class RotaryPositionalEmbedding(nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
         super(RotaryPositionalEmbedding, self).__init__()
@@ -80,6 +92,7 @@ def scaled_dot_product_attention(
     attn_weights = softmax(scores, dim=-1)
     return einsum(attn_weights, value, '... seq_len_q seq_len_k, ... seq_len_k d_v -> ... seq_len_q d_v')
 
+    
 class MultiheadSelfAttention(nn.Module):
     
     def __init__(self, d_model: int, num_heads: int, rope: nn.Module, device=None, dtype=None):
@@ -136,10 +149,20 @@ class TransformerBlockwithAblation(nn.Module):
         elif self.ablation_mode == "no_norm":
             self.attn = MultiheadSelfAttention(d_model, num_heads, rope, device=device, dtype=dtype)
             self.ff = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+        elif self.ablation_mode == "no_RoPE":
+            self.attn = MultiheadSelfAttention(d_model, num_heads, None, device=device, dtype=dtype)
+            self.norm1 = RMSNorm(d_model, device=device, dtype=dtype)
+            self.ff = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+            self.norm2 = RMSNorm(d_model, device=device, dtype=dtype)
+        elif self.ablation_mode == "SiLU":
+            self.attn = MultiheadSelfAttention(d_model, num_heads, rope, device=device, dtype=dtype)
+            self.norm1 = RMSNorm(d_model, device=device, dtype=dtype)
+            self.ff = SiLU(d_model, d_ff, device=device, dtype=dtype)
+            self.norm2 = RMSNorm(d_model, device=device, dtype=dtype)
 
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.ablation_mode == "None":
+        if self.ablation_mode in [None, "no_RoPE", "SiLU"]:
             attn_output = self.attn(self.norm1(x))
             x = x + attn_output
             ff_output = self.ff(self.norm2(x))
@@ -207,11 +230,12 @@ class TransformerLMwithAblation(nn.Module):
         if ablation_mode not in ["None", "post_norm", "no_norm", "no_RoPE", "SiLU"]:
             raise ValueError("Invalid ablation mode. Choose from 'None', 'post_norm', 'no_norm', 'no_RoPE', or 'SiLU'.")
         self.ablation_mode = ablation_mode
-        if self.ablation_mode is None:
+
+        if self.ablation_mode in ["None", "post_norm", "no_RoPE", "SiLU"]:
             self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
             self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
             self.layers = nn.ModuleList([
-                TransformerBlock(d_model, num_heads, d_ff, self.rope, device=device, dtype=dtype) for _ in range(num_layers)
+                TransformerBlockwithAblation(d_model, num_heads, d_ff, self.rope, self.ablation_mode, device=device, dtype=dtype) for _ in range(num_layers)
             ])
             self.norm = RMSNorm(d_model, device=device, dtype=dtype)
             self.output = Linear(d_model, vocab_size, device=device, dtype=dtype)
@@ -219,12 +243,12 @@ class TransformerLMwithAblation(nn.Module):
             self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
             self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
             self.layers = nn.ModuleList([
-                TransformerBlockwithAblation(d_model, num_heads, d_ff, self.rope, ablation_mode=self.ablation_mode, device=device, dtype=dtype) for _ in range(num_layers)
+                TransformerBlockwithAblation(d_model, num_heads, d_ff, self.rope, self.ablation_mode, device=device, dtype=dtype) for _ in range(num_layers)
             ])
             self.output = Linear(d_model, vocab_size, device=device, dtype=dtype)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.ablation_mode == "None":
+        if self.ablation_mode in ["None", "post_norm", "no_RoPE", "SiLU"]:
             x = self.embedding(x)
             for layer in self.layers:
                 x = layer(x)
