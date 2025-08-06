@@ -99,7 +99,16 @@ Problem (adamwAccounting):
 
 3. Each forward step takes about $4.51\times 10^{12}$ FLOPs. So each adamW step takes about $13.5\times 10^{12}$ FLOPs (ignoring some minor operations.)
 
-4. It will take approximately 7 years to finish the training.
+4. It will take approximately 7 years to finish the training
+
+Proble (generate): 
+
+Here is a sample from the LM trained on TinyStories. We use top_p=0.8 and temprerature=0.8.
+
+Once upon a time, there was a little boy named Tim. Tim was a very good boy, but he was very spoiled. He always wanted more and more. One day, Tim's mom took him to the store. She wanted to buy a toy for him. Tim was very happy.
+At the store, Tim saw many toys. He saw a big doll, a soft bear, and a funny car. But he did not have enough money. Tim felt sad and his mom said, "Don't be sad, Tim. You can buy the car." Tim's mom bought the car for him.
+When they got home, Tim played with his new toy. He was very happy. But then, something unexpected happened. The car started to move on its own! It drove around the room, and Tim was very surprised. The car drove around the room, and Tim laughed and clapped his hands.
+
 
 
 

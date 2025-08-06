@@ -38,8 +38,8 @@ class SwiGLU(nn.Module):
     def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
         super(SwiGLU, self).__init__()
         self.linear1 = Linear(d_model, d_ff, device=device, dtype=dtype)
-        self.linear2 = Linear(d_model, d_ff, device=device, dtype=dtype)
-        self.linear3 = Linear(d_ff, d_model, device=device, dtype=dtype)
+        self.linear2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+        self.linear3 = Linear(d_model, d_ff, device=device, dtype=dtype)
     
     def silu(self, x: torch.Tensor) -> torch.Tensor:
         return x * torch.sigmoid(x)
@@ -149,7 +149,7 @@ class TransformerLM(nn.Module):
             logits = self.forward(output)
             # logits of the next token prediction
             logits = logits[:, -1, :] / temperature
-            logits = rearrange(logits, '1 1 vocab_size -> vocab_size')
+            logits = rearrange(logits, '1 vocab_size -> vocab_size')
             if top_p < 1.0:
                 sorted_logits, sorted_indices = torch.sort(logits, descending=True)
                 cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
@@ -158,7 +158,7 @@ class TransformerLM(nn.Module):
                 sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
                 sorted_indices_to_remove[0] = 0
                 indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                logits[indices_to_remove] =torch.float('-inf')
+                logits[indices_to_remove] = float('-inf')
             probs = softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
             if next_token.item() == eof_id:
