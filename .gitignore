@@ -1,6 +1,13 @@
 # Data
 data/
 
+# Model checkpoints and large files
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

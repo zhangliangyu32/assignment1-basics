@@ -58,7 +58,7 @@ class AdamW(torch.optim.Optimizer):
                 denom = (exp_avg_sq.sqrt() + eps)
                 corrected_lr = lr * math.sqrt(1 - betas[1] ** state["step"]) / (1 - betas[0] ** state["step"])
                 p.data.addcdiv_(exp_avg, denom, value=-corrected_lr)
-                if weight_decay != 0:
+                if weight_decay != 0.0:
                     p.data.add_(-weight_decay * lr * p.data)
         return loss
 

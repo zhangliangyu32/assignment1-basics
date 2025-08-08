@@ -31,6 +31,7 @@ class RMSNorm(nn.Module):
         in_dtype = x.dtype
         x = x.to(torch.float32)  # Convert to float32 for numerical stability
         norm = torch.sqrt(torch.mean(x**2, dim=-1, keepdim=True) + self.eps)
+        # return x * (self.gain / norm)
         return (x * (self.gain / norm)).to(in_dtype)
     
 
@@ -38,8 +39,8 @@ class SwiGLU(nn.Module):
     def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
         super(SwiGLU, self).__init__()
         self.linear1 = Linear(d_model, d_ff, device=device, dtype=dtype)
-        self.linear2 = Linear(d_model, d_ff, device=device, dtype=dtype)
-        self.linear3 = Linear(d_ff, d_model, device=device, dtype=dtype)
+        self.linear2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+        self.linear3 = Linear(d_model, d_ff, device=device, dtype=dtype)
     
     def silu(self, x: torch.Tensor) -> torch.Tensor:
         return x * torch.sigmoid(x)
@@ -47,11 +48,23 @@ class SwiGLU(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.linear2(self.silu(self.linear1(x)) * self.linear3(x))
 
+class SiLU(nn.Module):
+    def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
+        super(SiLU, self).__init__()
+        self.linear1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.linear2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+    
+    def silu(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.sigmoid(x)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear2(self.silu(self.linear1(x)))
+
 class RotaryPositionalEmbedding(nn.Module):
-    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None, dtype=None):
         super(RotaryPositionalEmbedding, self).__init__()
-        inv_freq = 1.0 / (theta ** (torch.arange(0, d_k, 2, device=device) / d_k))
-        angles = einsum(torch.arange(max_seq_len, device=device).float(), inv_freq, 'seq_len, d_k_half -> seq_len d_k_half')
+        inv_freq = 1.0 / (theta ** (torch.arange(0, d_k, 2, device=device, dtype=dtype) / d_k))
+        angles = einsum(torch.arange(max_seq_len, device=device, dtype=dtype), inv_freq, 'seq_len, d_k_half -> seq_len d_k_half')
         cos_cached = angles.cos()
         sin_cached = angles.sin()
         self.register_buffer('cos_cached', cos_cached)
@@ -80,6 +93,7 @@ def scaled_dot_product_attention(
     attn_weights = softmax(scores, dim=-1)
     return einsum(attn_weights, value, '... seq_len_q seq_len_k, ... seq_len_k d_v -> ... seq_len_q d_v')
 
+    
 class MultiheadSelfAttention(nn.Module):
     
     def __init__(self, d_model: int, num_heads: int, rope: nn.Module, device=None, dtype=None):
@@ -122,11 +136,54 @@ class TransformerBlock(nn.Module):
         ff_output = self.ff(self.norm2(x))
         return x + ff_output
 
+class TransformerBlockwithAblation(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, rope: nn.Module = None, ablation_mode: str = "None", device=None, dtype=None):
+        super(TransformerBlockwithAblation, self).__init__()
+        if ablation_mode not in ["None", "post_norm", "no_norm", "no_RoPE", "SiLU"]:
+            raise ValueError("Invalid ablation mode. Choose from 'None', 'post_norm', 'no_norm', 'no_RoPE', or 'SiLU'.")
+        self.ablation_mode = ablation_mode
+        if self.ablation_mode in ["None", "post_norm"]:
+            self.attn = MultiheadSelfAttention(d_model, num_heads, rope, device=device, dtype=dtype)
+            self.norm1 = RMSNorm(d_model, device=device, dtype=dtype)
+            self.ff = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+            self.norm2 = RMSNorm(d_model, device=device, dtype=dtype)
+        elif self.ablation_mode == "no_norm":
+            self.attn = MultiheadSelfAttention(d_model, num_heads, rope, device=device, dtype=dtype)
+            self.ff = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+        elif self.ablation_mode == "no_RoPE":
+            self.attn = MultiheadSelfAttention(d_model, num_heads, None, device=device, dtype=dtype)
+            self.norm1 = RMSNorm(d_model, device=device, dtype=dtype)
+            self.ff = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+            self.norm2 = RMSNorm(d_model, device=device, dtype=dtype)
+        elif self.ablation_mode == "SiLU":
+            self.attn = MultiheadSelfAttention(d_model, num_heads, rope, device=device, dtype=dtype)
+            self.norm1 = RMSNorm(d_model, device=device, dtype=dtype)
+            self.ff = SiLU(d_model, d_ff, device=device, dtype=dtype)
+            self.norm2 = RMSNorm(d_model, device=device, dtype=dtype)
+
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.ablation_mode in [None, "no_RoPE", "SiLU"]:
+            attn_output = self.attn(self.norm1(x))
+            x = x + attn_output
+            ff_output = self.ff(self.norm2(x))
+            return x + ff_output
+        elif self.ablation_mode == "no_norm":
+            attn_output = self.attn(x)
+            x = x + attn_output
+            ff_output = self.ff(x)
+            return x + ff_output
+        elif self.ablation_mode == "post_norm":
+            attn_output = self.attn(x)
+            x = self.norm1(x + attn_output)
+            ff_output = self.ff(x)
+            return self.norm2(x + ff_output)
+
 class TransformerLM(nn.Module):
     def __init__(self, vocab_size: int, context_length: int, num_layers: int, d_model: int, num_heads: int, d_ff: int, rope_theta: float, device=None, dtype=None):
         super(TransformerLM, self).__init__()
         self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
-        self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
+        self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device, dtype=dtype)
         self.layers = nn.ModuleList([
             TransformerBlock(d_model, num_heads, d_ff, self.rope, device=device, dtype=dtype) for _ in range(num_layers)
         ])
@@ -149,7 +206,7 @@ class TransformerLM(nn.Module):
             logits = self.forward(output)
             # logits of the next token prediction
             logits = logits[:, -1, :] / temperature
-            logits = rearrange(logits, '1 1 vocab_size -> vocab_size')
+            logits = rearrange(logits, '1 vocab_size -> vocab_size')
             if top_p < 1.0:
                 sorted_logits, sorted_indices = torch.sort(logits, descending=True)
                 cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
@@ -158,7 +215,7 @@ class TransformerLM(nn.Module):
                 sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
                 sorted_indices_to_remove[0] = 0
                 indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                logits[indices_to_remove] =torch.float('-inf')
+                logits[indices_to_remove] = float('-inf')
             probs = softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
             if next_token.item() == eof_id:
@@ -166,5 +223,70 @@ class TransformerLM(nn.Module):
             next_token = rearrange(next_token, '1 -> 1 1')
             output = torch.cat((output, next_token), dim=1)
         return output
+    
+
+class TransformerLMwithAblation(nn.Module):
+    def __init__(self, vocab_size: int, context_length: int, num_layers: int, d_model: int, num_heads: int, d_ff: int, rope_theta: float, ablation_mode: str = "None", device=None, dtype=None):
+        super(TransformerLMwithAblation, self).__init__()
+        if ablation_mode not in ["None", "post_norm", "no_norm", "no_RoPE", "SiLU"]:
+            raise ValueError("Invalid ablation mode. Choose from 'None', 'post_norm', 'no_norm', 'no_RoPE', or 'SiLU'.")
+        self.ablation_mode = ablation_mode
+
+        if self.ablation_mode in ["None", "post_norm", "no_RoPE", "SiLU"]:
+            self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
+            self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device, dtype=dtype)
+            self.layers = nn.ModuleList([
+                TransformerBlockwithAblation(d_model, num_heads, d_ff, self.rope, self.ablation_mode, device=device, dtype=dtype) for _ in range(num_layers)
+            ])
+            self.norm = RMSNorm(d_model, device=device, dtype=dtype)
+            self.output = Linear(d_model, vocab_size, device=device, dtype=dtype)
+        elif self.ablation_mode == "no_norm":
+            self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
+            self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
+            self.layers = nn.ModuleList([
+                TransformerBlockwithAblation(d_model, num_heads, d_ff, self.rope, self.ablation_mode, device=device, dtype=dtype) for _ in range(num_layers)
+            ])
+            self.output = Linear(d_model, vocab_size, device=device, dtype=dtype)
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.ablation_mode in ["None", "post_norm", "no_RoPE", "SiLU"]:
+            x = self.embedding(x)
+            for layer in self.layers:
+                x = layer(x)
+            x = self.norm(x)
+            return self.output(x)
+        elif self.ablation_mode == "no_norm":
+            x = self.embedding(x)
+            for layer in self.layers:
+                x = layer(x)
+            return self.output(x)
+    
+    def decode(self, prefix: torch.Tensor, max_length: int, eof_id: int, temperature: float = 1.0, top_p: float = 0.9) -> torch.Tensor:
+        # Initialize output with the prefix
+        # shape: (1, seq_len)
+        output = rearrange(prefix, 'seq_len -> 1 seq_len')
+        while output.shape[1] < max_length:
+            # shape: (1, seq_len, vocab_size)
+            logits = self.forward(output)
+            # logits of the next token prediction
+            logits = logits[:, -1, :] / temperature
+            logits = rearrange(logits, '1 vocab_size -> vocab_size')
+            if top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                sorted_indices_to_remove = cumulative_probs > top_p
+                # in case the first token is above the threshold, we remove it
+                sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                sorted_indices_to_remove[0] = 0
+                indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                logits[indices_to_remove] = float('-inf')
+            probs = softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+            if next_token.item() == eof_id:
+                break
+            next_token = rearrange(next_token, '1 -> 1 1')
+            output = torch.cat((output, next_token), dim=1)
+        return output
+
         
 
