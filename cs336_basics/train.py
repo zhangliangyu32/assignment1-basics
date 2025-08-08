@@ -12,7 +12,6 @@ def train(x_train: np.ndarray, x_val: np.ndarray, model: nn.Module, config: dict
     device = config.get("device", "cpu")
     max_iterations = config.get("max_iterations", 40000)
     weight_decay = config.get("weight_decay", 0.01)
-    print(weight_decay)
     save_until = config.get("save_until", 2000)
     save_path = config.get("save_path", "/root/assignment1-basics/checkpoints/")
     val_until = config.get("val_until", 1000)

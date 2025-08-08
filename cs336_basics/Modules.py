@@ -31,6 +31,7 @@ class RMSNorm(nn.Module):
         in_dtype = x.dtype
         x = x.to(torch.float32)  # Convert to float32 for numerical stability
         norm = torch.sqrt(torch.mean(x**2, dim=-1, keepdim=True) + self.eps)
+        # return x * (self.gain / norm)
         return (x * (self.gain / norm)).to(in_dtype)
     
 
@@ -49,7 +50,7 @@ class SwiGLU(nn.Module):
 
 class SiLU(nn.Module):
     def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
-        super(SwiGLU, self).__init__()
+        super(SiLU, self).__init__()
         self.linear1 = Linear(d_model, d_ff, device=device, dtype=dtype)
         self.linear2 = Linear(d_ff, d_model, device=device, dtype=dtype)
     
@@ -60,10 +61,10 @@ class SiLU(nn.Module):
         return self.linear2(self.silu(self.linear1(x)))
 
 class RotaryPositionalEmbedding(nn.Module):
-    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None, dtype=None):
         super(RotaryPositionalEmbedding, self).__init__()
-        inv_freq = 1.0 / (theta ** (torch.arange(0, d_k, 2, device=device) / d_k))
-        angles = einsum(torch.arange(max_seq_len, device=device).float(), inv_freq, 'seq_len, d_k_half -> seq_len d_k_half')
+        inv_freq = 1.0 / (theta ** (torch.arange(0, d_k, 2, device=device, dtype=dtype) / d_k))
+        angles = einsum(torch.arange(max_seq_len, device=device, dtype=dtype), inv_freq, 'seq_len, d_k_half -> seq_len d_k_half')
         cos_cached = angles.cos()
         sin_cached = angles.sin()
         self.register_buffer('cos_cached', cos_cached)
@@ -182,7 +183,7 @@ class TransformerLM(nn.Module):
     def __init__(self, vocab_size: int, context_length: int, num_layers: int, d_model: int, num_heads: int, d_ff: int, rope_theta: float, device=None, dtype=None):
         super(TransformerLM, self).__init__()
         self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
-        self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
+        self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device, dtype=dtype)
         self.layers = nn.ModuleList([
             TransformerBlock(d_model, num_heads, d_ff, self.rope, device=device, dtype=dtype) for _ in range(num_layers)
         ])
@@ -233,7 +234,7 @@ class TransformerLMwithAblation(nn.Module):
 
         if self.ablation_mode in ["None", "post_norm", "no_RoPE", "SiLU"]:
             self.embedding = Embedding(vocab_size, d_model, device=device, dtype=dtype)
-            self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device)
+            self.rope = RotaryPositionalEmbedding(rope_theta, d_model // num_heads, context_length, device=device, dtype=dtype)
             self.layers = nn.ModuleList([
                 TransformerBlockwithAblation(d_model, num_heads, d_ff, self.rope, self.ablation_mode, device=device, dtype=dtype) for _ in range(num_layers)
             ])

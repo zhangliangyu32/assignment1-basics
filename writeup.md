@@ -93,13 +93,17 @@ Problem (adamwAccounting):
   
    In total, there are $BLd+Blv+Bl+n(20Bld+bl^2)$ activations.
 
-   So the final memory use is $8dv+4d+4n(16d^2+2d)+BLd+Blv+Bl+n(20Bld+BHl^2)$ float 32 parameters.
+   So the final memory use is $8dv+4d+4n(16d^2+2d)+Bld+Blv+Bl+n(20Bld+BHl^2)$ float 32 parameters.
 
 2. The expression is $8.51\times 10^9+2.88\times 10^9 B$, or $31.7$GB+$10.7B$GB. The maximal batch_size is approximately 4.
 
 3. Each forward step takes about $4.51\times 10^{12}$ FLOPs. So each adamW step takes about $13.5\times 10^{12}$ FLOPs (ignoring some minor operations.)
 
-4. It will take approximately 7 years to finish the training
+4. It will take approximately 18 years to finish the training.
+
+Problem (experiment_log):
+
+We use SwanLab to track all the experiments we have done.
 
 Problem (learning_rate):
 
@@ -125,9 +129,9 @@ Thus there is no significant overfitting.
 
 Problem (batch_size experiment)
 
-![learning curves of different batch_size choices (train loss)](./figures/batch_size_experiment_train.png "learning curves of different lr choices (train loss)")
+![learning curves of different batch_size choices (train loss)](./figures/batch_size_experiment_train.png "learning curves of different batch sizes (train loss)")
 
-![learning curves of different batch_size choices (validation loss)](./figures/batch_size_experiment_val.png "learning curves of different lr choices (train loss)")
+![learning curves of different batch_size choices (validation loss)](./figures/batch_size_experiment_val.png "learning curves of different batch sizes (validation loss)")
 
 We adopt a heuristic rule to set the lr: letting the lr grow proportionally w.r.t. the batch_size.
 We find that with the fixed training budget, the model trained with batch_size=16 has similar performance to that trained with batch_size=32. 
@@ -143,6 +147,38 @@ Once upon a time, there was a little boy named Tim. Tim was a very good boy, but
 At the store, Tim saw many toys. He saw a big doll, a soft bear, and a funny car. But he did not have enough money. Tim felt sad and his mom said, "Don't be sad, Tim. You can buy the car." Tim's mom bought the car for him.
 When they got home, Tim played with his new toy. He was very happy. But then, something unexpected happened. The car started to move on its own! It drove around the room, and Tim was very surprised. The car drove around the room, and Tim laughed and clapped his hands.
 
+Problem (layer_norm_ablation, pre_norm_ablation, no_pos_emb, swiglu_ablation)
 
+![learning curves of different ablations (train loss)](./figures/ablation_train_loss.png "learning curves of different ablations (train loss)")
 
+![learning curves of different ablations (validation loss)](./figures/ablation_valid_loss.png "learning curves of different ablations (validation loss)")
+
+In the no_norm ablation, the training crashes at very early stage in the case lr=1e-3. 
+We manage to finish training by setting lr=1e-4.
+In the post_norm and no_RoPE ablations, the model performances are slightly worse than the baseline.
+It is a little bit surprising that the model still performs reasonably well without RoPE.
+This can be due to the masked attentions themselves introduce weak positional signals.
+In the silu ablation, the performance of the model is nearly the same to the baseline.
+
+Problem (main_experiment)
+
+![learning curves of owt baseline (train loss)](./figures/owt_baseline_train.png "learning curves of owt baseline (train loss)")
+
+![learning curves of different ablations (validation loss)](./figures/owt_baseline_val.png "learning curves of owt baseline (validation loss)")
+
+The text sampled from our model:
+Once the meat is fresh, it will taste very dry, then the meat is cooked with the sweetener, which is then cooked to taste a bit of water.
+It will taste a bit of the butter and salt in the sauce, but it’s not the best pasta dish in the world, so you can taste it all in the same way.
+The meat will taste in the flour, but the fat will taste very good.
+I know that this is pretty good for my butter and butter, but I don’t know how to cook for a day. I think the taste in butter and butter is just one of the ingredients in butter and butter.
+I also like the ginger. I’m a big fan of butter and butter and butter.
+I don’t know what to eat.
+I’ve had a lot of success in my eating and butter. I don’t know if it’s that kind of thing, but I know that it’s good for you.
+I love butter and butter and butter, but it’s a bit of butter and butter.
+I like butter and butter, butter and butter. I love butter and butter, butter and butter.
+
+This is because we are fitting a model on higher dimensional space (larger vocabulary size) with the same training budget.
+Also, the owt dataset may be noisy than the tiny stories dataset.
+
+Problem (leaderboard)
 
