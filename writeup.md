@@ -90,11 +90,12 @@ Problem (adamwAccounting):
    * The final Norm layer yields $BLd$ activations, and the output embedding layer yields $BLv$ activations.
    * In the transformer block, each of the two Norm layers has $Bld$ activations. For MHA, the Q, K, V projections yields $3Bld$ activations. $Q^\top K$ matrix multiply yields $Bhl^2$ activations, softmax yields $Bld$ activations, weighted sum of values yields $Bld$ activations, and the final output yields $Bld$ activations. For FFN, each of silu, $W_1$ matrix multiply and $W_2$ matrix multiply yields $4Bld$ activations.
    * To compute cross-entropy on logits we need to compute $Bl$ activations.
-  
+    
+   
    In total, there are $BLd+Blv+Bl+n(20Bld+bl^2)$ activations.
-
+   
    So the final memory use is $8dv+4d+4n(16d^2+2d)+Bld+Blv+Bl+n(20Bld+BHl^2)$ float 32 parameters.
-
+   
 2. The expression is $8.51\times 10^9+2.88\times 10^9 B$, or $31.7$GB+$10.7B$GB. The maximal batch_size is approximately 4.
 
 3. Each forward step takes about $4.51\times 10^{12}$ FLOPs. So each adamW step takes about $13.5\times 10^{12}$ FLOPs (ignoring some minor operations.)
@@ -164,7 +165,7 @@ Problem (main_experiment)
 
 ![learning curves of owt baseline (train loss)](./figures/owt_baseline_train.png "learning curves of owt baseline (train loss)")
 
-![learning curves of different ablations (validation loss)](./figures/owt_baseline_val.png "learning curves of owt baseline (validation loss)")
+![learning curves of owt baseline (validation loss)](./figures/owt_baseline_val.png "learning curves of owt baseline (validation loss)")
 
 The text sampled from our model:
 Once the meat is fresh, it will taste very dry, then the meat is cooked with the sweetener, which is then cooked to taste a bit of water.
@@ -181,4 +182,10 @@ This is because we are fitting a model on higher dimensional space (larger vocab
 Also, the owt dataset may be noisy than the tiny stories dataset.
 
 Problem (leaderboard)
+
+We train our model for 5 hours on a single RTX4090. The final validation loss is around 3.55. The model is slightly deeper with batch_size=64, which fully utilizes RTX4090's 24G VRAM. We use a cosine lr scheduler and set weight_decay=0.001. Here are the learning curves:
+
+![learning curves of owt (parameters tuned) (train loss)](./figures/owt_tuned_train.png "learning curves of owt (parameters tuned) (train loss)")
+
+![learning curves of owt (parameters tuned) (validation loss)](./figures/owt_tuned_val.png "learning curves of owt (parameters tuned) (validation loss)")
 
